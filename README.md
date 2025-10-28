@@ -1,11 +1,10 @@
-# Real-Time Chat Application with Socket.io
+# ChatFlow - Real-Time Chat Application with Socket.io
 
-This assignment focuses on building a real-time chat application using Socket.io, implementing bidirectional communication between clients and server.
+A fully functional real-time chat application built using Socket.io, React, and Node.js implementing bidirectional communication between clients and server.
 
-## Assignment Overview
+## Features Implemented 
 
-You will build a chat application with the following features:
-1. Real-time messaging using Socket.io
+1. Real-time messaging using Socket.io across multiple rooms
 2. User authentication and presence
 3. Multiple chat rooms or private messaging
 4. Real-time notifications
