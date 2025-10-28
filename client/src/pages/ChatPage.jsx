@@ -96,12 +96,14 @@ export default function ChatPage() {
   };
 
   const handleUserSelect = (selectedUser) => {
-    setActivePrivateChat(selectedUser);
-    const conversationId = [user.userId || localStorage.getItem('chatUserId'), selectedUser.id].sort().join('-');
-    
-    if (!privateChats.has(conversationId)) {
-      socket.emit('private:get', { recipientId: selectedUser.id });
-    }
+  setActivePrivateChat(selectedUser);
+  const userId = localStorage.getItem('chatUserId');
+  const conversationId = [userId, selectedUser.id].sort().join('-');
+  
+  if (!privateChats.has(conversationId) && socket) {
+    socket.emit('private:get', { recipientId: selectedUser.id });
+  }
+  setMessages([]);
   };
 
   const handleSendMessage = (content) => {
@@ -128,21 +130,24 @@ export default function ChatPage() {
   };
 
   const getCurrentMessages = () => {
-    if (activePrivateChat) {
-      const userId = user.userId || localStorage.getItem('chatUserId');
-      const conversationId = [userId, activePrivateChat.id].sort().join('-');
-      return privateChats.get(conversationId) || [];
-    }
+  if (activePrivateChat) {
+    const userId = localStorage.getItem('chatUserId');
+    const conversationId = [userId, activePrivateChat.id].sort().join('-');
+    const privateMessages = privateChats.get(conversationId) || [];
     
-    if (searchTerm) {
-      return messages.filter(msg =>
-        msg.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        msg.username.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    
-    return messages;
-  };
+    console.log('Private chat messages:', privateMessages);
+    return privateMessages;
+  }
+  
+  if (searchTerm) {
+    return messages.filter(msg =>
+      msg.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (msg.username && msg.username.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  }
+  
+  return messages;
+};
 
   return (
     <div className="h-screen flex bg-gray-100">
