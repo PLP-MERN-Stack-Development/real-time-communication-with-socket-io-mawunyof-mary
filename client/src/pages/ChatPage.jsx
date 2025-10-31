@@ -44,49 +44,81 @@ export default function ChatPage() {
     }
   }, [socket, requestNotificationPermission]);
 
-  // Handle private messages
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('message:private-new', (message) => {
-      const conversationId = [message.from, message.to].sort().join('-');
-      setPrivateChats(prev => {
-        const updated = new Map(prev);
-        const messages = updated.get(conversationId) || [];
-        updated.set(conversationId, [...messages, message]);
-        return updated;
-      });
-    });
+    const handlePrivateUniversal = (message) => {
+      try {
+        const userId = localStorage.getItem('chatUserId');
+        console.log('\n📡 Universal message received:');
+        console.log('   From:', message.fromUsername, '(ID:', message.from, ')');
+        console.log('   To:', message.toUsername, '(ID:', message.to, ')');
+        console.log('   My ID:', userId);
+        console.log('   Content:', message.content);
+        
+        if (message.to === userId || message.from === userId) {
+          console.log('✅ This message is for me!');
+          
+          // Sort IDs as strings to ensure consistency
+          const conversationId = [String(message.from), String(message.to)].sort().join('-');
+          console.log('   Conversation ID:', conversationId);
+          
+          setPrivateChats(prev => {
+            const updated = new Map(prev);
+            const existing = updated.get(conversationId) || [];
+            
+            console.log('   Existing messages:', existing.length);
+            
+            const isDuplicate = existing.some(m => m.id === message.id);
+            if (!isDuplicate) {
+              const newMessages = [...existing, message];
+              updated.set(conversationId, newMessages);
+              console.log('   💾 Saved! Total now:', newMessages.length);
+              console.log('   All conversation IDs:', Array.from(updated.keys()));
+            } else {
+              console.log('   ⚠️  Duplicate message, skipping');
+            }
+            
+            return updated;
+          });
+        } else {
+          console.log('❌ Not for me, ignoring');
+        }
+      } catch (error) {
+        console.error('Error handling private message:', error);
+      }
+    };
 
-    socket.on('message:private-sent', (message) => {
-      const conversationId = [message.from, message.to].sort().join('-');
-      setPrivateChats(prev => {
-        const updated = new Map(prev);
-        const messages = updated.get(conversationId) || [];
-        updated.set(conversationId, [...messages, message]);
-        return updated;
-      });
-    });
+    const handlePrivateMessages = (data) => {
+      try {
+        console.log('\n📦 Loading conversation:', data.conversationId);
+        console.log('   Messages count:', data.messages.length);
+        
+        setPrivateChats(prev => {
+          const updated = new Map(prev);
+          updated.set(data.conversationId, data.messages);
+          console.log('   ✅ Loaded successfully');
+          return updated;
+        });
+      } catch (error) {
+        console.error('Error loading private messages:', error);
+      }
+    };
 
-    socket.on('message:reaction-update', ({ messageId, reactions }) => {
+    const handleReactionUpdate = (data) => {
       setMessages(prev => prev.map(msg => 
-        msg.id === messageId ? { ...msg, reactions } : msg
+        msg.id === data.messageId ? { ...msg, reactions: data.reactions } : msg
       ));
-    });
+    };
 
-    socket.on('private:messages', ({ conversationId, messages }) => {
-      setPrivateChats(prev => {
-        const updated = new Map(prev);
-        updated.set(conversationId, messages);
-        return updated;
-      });
-    });
+    socket.on('message:private-universal', handlePrivateUniversal);
+    socket.on('private:messages', handlePrivateMessages);
+    socket.on('message:reaction-update', handleReactionUpdate);
 
     return () => {
-      socket.off('message:private-new');
-      socket.off('message:private-sent');
-      socket.off('message:reaction-update');
-      socket.off('private:messages');
+      socket.off('message:private-universal', handlePrivateUniversal);
+      socket.off('private:messages', handlePrivateMessages);
+      socket.off('message:reaction-update', handleReactionUpdate);
     };
   }, [socket, setMessages]);
 
@@ -96,18 +128,21 @@ export default function ChatPage() {
   };
 
   const handleUserSelect = (selectedUser) => {
-  setActivePrivateChat(selectedUser);
-  const userId = localStorage.getItem('chatUserId');
-  const conversationId = [userId, selectedUser.id].sort().join('-');
-  
-  if (!privateChats.has(conversationId) && socket) {
-    socket.emit('private:get', { recipientId: selectedUser.id });
-  }
-  setMessages([]);
+    console.log('\n👤 Opening private chat with:', selectedUser.username);
+    console.log('   Their ID:', selectedUser.id);
+    setActivePrivateChat(selectedUser);
+    
+    if (socket) {
+      socket.emit('private:get', { recipientId: selectedUser.id });
+    }
   };
 
   const handleSendMessage = (content) => {
-    if (activePrivateChat) {
+    if (activePrivateChat && socket) {
+      console.log('\n📤 Sending private message to:', activePrivateChat.username);
+      console.log('   Recipient ID:', activePrivateChat.id);
+      console.log('   Content:', content.trim());
+      
       socket.emit('message:private', {
         recipientId: activePrivateChat.id,
         content: content.trim()
@@ -118,7 +153,9 @@ export default function ChatPage() {
   };
 
   const handleReaction = (messageId, reaction) => {
-    addReaction(messageId, reaction);
+    if (!activePrivateChat) {
+      addReaction(messageId, reaction);
+    }
   };
 
   const getChatName = () => {
@@ -130,24 +167,47 @@ export default function ChatPage() {
   };
 
   const getCurrentMessages = () => {
-  if (activePrivateChat) {
-    const userId = localStorage.getItem('chatUserId');
-    const conversationId = [userId, activePrivateChat.id].sort().join('-');
-    const privateMessages = privateChats.get(conversationId) || [];
+    if (activePrivateChat) {
+      const userId = localStorage.getItem('chatUserId');
+      
+      // Ensure both IDs are strings and sorted
+      const conversationId = [String(userId), String(activePrivateChat.id)].sort().join('-');
+      
+      console.log('\n🔍 Getting messages for display:');
+      console.log('   My ID:', userId);
+      console.log('   Chat with ID:', activePrivateChat.id);
+      console.log('   Calculated conversation ID:', conversationId);
+      console.log('   All stored conversations:', Array.from(privateChats.keys()));
+      
+      const privateMessages = privateChats.get(conversationId);
+      
+      if (privateMessages) {
+        console.log('   ✅ Found', privateMessages.length, 'messages');
+        console.log('   Messages:', privateMessages.map(m => ({
+          from: m.fromUsername,
+          to: m.toUsername,
+          content: m.content.substring(0, 30)
+        })));
+      } else {
+        console.log('   ❌ No messages found for this conversation ID');
+        console.log('   Checking all conversations:');
+        privateChats.forEach((msgs, convId) => {
+          console.log(`      ${convId}: ${msgs.length} messages`);
+        });
+      }
+      
+      return privateMessages || [];
+    }
     
-    console.log('Private chat messages:', privateMessages);
-    return privateMessages;
-  }
-  
-  if (searchTerm) {
-    return messages.filter(msg =>
-      msg.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (msg.username && msg.username.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-  }
-  
-  return messages;
-};
+    if (searchTerm) {
+      return messages.filter(msg =>
+        msg.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (msg.username && msg.username.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+    
+    return messages;
+  };
 
   return (
     <div className="h-screen flex bg-gray-100">
@@ -182,13 +242,13 @@ export default function ChatPage() {
         <MessageList
           messages={getCurrentMessages()}
           onReaction={handleReaction}
-          currentUserId={user?.userId || localStorage.getItem('chatUserId')}
+          currentUserId={localStorage.getItem('chatUserId')}
         />
 
         <MessageInput
           onSendMessage={handleSendMessage}
-          onTyping={startTyping}
-          onStopTyping={stopTyping}
+          onTyping={activePrivateChat ? () => {} : startTyping}
+          onStopTyping={activePrivateChat ? () => {} : stopTyping}
         />
       </div>
     </div>
